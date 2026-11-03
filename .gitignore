@@ -1,0 +1,30 @@
+# ============================================================
+# .gitignore - 忽略不应提交到 Git 的文件
+# ============================================================
+
+# === IDE ===
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# === Maven ===
+target/
+*.jar
+*.war
+
+# === 本地配置 (含密码等敏感信息) ===
+application-local.yml
+application-dev.yml
+
+# === 本地存储数据 ===
+docstorage-data/
+
+# === Windows ===
+Thumbs.db
+Desktop.ini
+
+# === OS ===
+.DS_Store

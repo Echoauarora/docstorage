@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.docstorage.mapper.DocUploadPartMapper">
+
+    <resultMap id="partResultMap" type="com.docstorage.entity.DocUploadPart">
+        <id column="id" property="id"/>
+        <result column="upload_id" property="uploadId"/>
+        <result column="file_code" property="fileCode"/>
+        <result column="part_number" property="partNumber"/>
+        <result column="part_size" property="partSize"/>
+        <result column="part_md5" property="partMd5"/>
+        <result column="etag" property="etag"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 查询某个 uploadId 下所有已上传的分片, 按序号排序 -->
+    <select id="selectByUploadIdOrderByPartNumber" resultMap="partResultMap">
+        SELECT * FROM doc_upload_part
+        WHERE upload_id = #{uploadId}
+        ORDER BY part_number ASC
+    </select>
+
+</mapper>

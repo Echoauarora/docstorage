@@ -1,0 +1,177 @@
+# ============================================================
+# 企业文档权限与分片存储系统 - 主配置文件
+# 注意: 所有中间件地址均为 WSL Docker 容器内网IP
+# 需要替换为你本机 WSL 的IP地址 (在WSL中执行: hostname -I)
+# ============================================================
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: docstorage
+  profiles:
+    active: dev
+
+  # ========== MySQL 8.0 (WSL Docker) ==========
+  # WSL部署: 替换 host 为你的 WSL IP, 如 172.31.100.50
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/docstorage?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD:your-mysql-password}
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      # ====== HikariCP 连接池参数调优说明 ======
+      # maximum-pool-size: 最大连接数, 公式 = ((核心数 * 2) + 有效磁盘数), 这里8核CPU取20
+      maximum-pool-size: 20
+      # minimum-idle: 最小空闲连接, 保持预热避免突发流量建连开销
+      minimum-idle: 10
+      # idle-timeout: 空闲连接超时时间, 30分钟, 避免被MySQL服务端8小时断开
+      idle-timeout: 1800000
+      # connection-timeout: 客户端获取连接超时, 30秒, 超时后抛异常而非无限等待
+      connection-timeout: 30000
+      # max-lifetime: 连接最大存活时间, 25分钟 < MySQL wait_timeout(默认8小时)
+      max-lifetime: 1500000
+      # connection-test-query: 心跳检测SQL
+      connection-test-query: SELECT 1
+      # pool-name: 连接池名称, 便于logback定位
+      pool-name: DocStorageHikariPool
+      # use-only-server-side-prepared-statements: 减少客户端预处理开销
+      use-only-server-side-prepared-statements: true
+
+  # ========== Redis 7.0 (WSL Docker) ==========
+  # WSL部署: 替换 host 为你的 WSL IP
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ""
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 4
+          max-wait: 3000ms
+
+  # ========== Kafka (WSL Docker) ==========
+  # WSL部署: 替换 bootstrap-servers 为你的 WSL IP
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      # 确认机制: all=ISR中所有副本确认, 最安全但最慢
+      acks: all
+      # 重试次数 + 指数退避
+      retries: 3
+      retry-backoff-ms: 1000
+      # 幂等生产者: 防止网络抖动导致重复消息
+      enable-idempotence: true
+      # 批量发送, 提升吞吐
+      batch-size: 16384
+      linger-ms: 10
+      buffer-memory: 33554432
+    consumer:
+      group-id: docstorage-group
+      auto-offset-reset: earliest
+      # 手动提交, 确保业务处理完成后才确认
+      enable-auto-commit: false
+      max-poll-records: 100
+      properties:
+        # 手动ACK配合ConcurrentKafkaListenerContainerFactory
+        ack-mode: manual
+        isolation.level: read_committed
+    listener:
+      # 单线程监听器, 手动ACK
+      ack-mode: manual
+      type: single
+    topics:
+      access-log: doc-access-log
+      thumbnail-task: doc-thumbnail-task
+      # 死信队列
+      dead-letter: doc-dead-letter
+
+  # ========== Servlet 上传配置 (支持大文件分片) ==========
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+# ========== MyBatis-Plus ==========
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.docstorage.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# ========== 存储策略配置 (本地磁盘分片存储) ==========
+# 架构预留 StorageStrategy 接口, 后续可扩展对接对象存储 (如 MinIO / OSS)
+storage:
+  default-part-size: 5242880
+  local:
+    # 正式文件存储根目录 (支持相对/绝对路径, Windows/WSL 都兼容)
+    root-path: ./docstorage-data/files
+    # 分片临时目录 (与正式文件分开, 防脏数据)
+    temp-path: ./docstorage-data/temp
+
+# ========== JWT ==========
+jwt:
+  secret: ${JWT_SECRET:your-jwt-secret-key-change-me}
+  expire-minutes: 1440
+  header: Authorization
+  prefix: "Bearer "
+
+# ========== 线程池配置 ==========
+thread-pool:
+  core-pool-size: 8
+  max-pool-size: 32
+  queue-capacity: 1000
+  keep-alive-seconds: 60
+
+# ========== 缓存过期时间 (秒) ==========
+cache:
+  expire:
+    # 权限缓存 5分钟
+    permission: 300
+    # 用户信息缓存 30分钟
+    user: 1800
+    # 分片上传状态 24小时
+    upload-part: 86400
+
+# ========== 日志级别 ==========
+logging:
+  level:
+    com.docstorage: debug
+    com.baomidou.mybatisplus: debug
+    org.apache.kafka: warn
+
+# ========== Knife4j 接口文档 ==========
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+# ========== 自定义配置 ==========
+docstorage:
+  # 临时文件存储路径
+  temp-path: D:/docstorage/temp
+  # 回收站保留天数
+  recycle-days: 30
+  # 幂等过期时间(秒)
+  idempotent-expire: 600
